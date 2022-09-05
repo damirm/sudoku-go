@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"strings"
@@ -20,6 +21,8 @@ const (
 	VERT_BORDERS   = REGIONS_IN_ROW + 1
 	// Arithmetic progression from 1 to 9
 	EXPECTED_SUM = GRID_SIZE * (1 + GRID_SIZE) / 2
+	// How much percents of cells will be opened on start.
+	OPENED_CELLS_PERC = 20
 
 	COLOR_RED   = "\x1B[31m"
 	COLOR_RESET = "\x1B[0m"
@@ -195,16 +198,41 @@ func (s *Sudoku) isRegionFilled(x, y int) bool {
 	return true
 }
 
-func (s *Sudoku) Randomize() {
-	s.clearBoard()
-
+func (s *Sudoku) generate() {
 	for y := 0; y < GRID_SIZE; y++ {
 		for x := 0; x < GRID_SIZE; x++ {
-			v := random(1, GRID_SIZE+1)
+			s.board[y][x] = random(1, GRID_SIZE+1)
+		}
+	}
+}
 
-			if random(0, 2) == 0 {
-				s.solution[y][x] = v
-			}
+func (s *Sudoku) Randomize() {
+	s.clearBoard()
+	s.generate()
+	s.openRandomCells()
+}
+
+func (s *Sudoku) openRandomCells() {
+	target := math.Floor((GRID_SIZE * GRID_SIZE) * (OPENED_CELLS_PERC / 100.0))
+	placed := 0.0
+
+	for placed <= target {
+		x := random(0, GRID_SIZE)
+		y := random(0, GRID_SIZE)
+
+		if s.solution[y][x] != 0 {
+			continue
+		}
+
+		s.solution[y][x] = s.board[y][x]
+		placed++
+	}
+}
+
+func (s *Sudoku) ShowSolution() {
+	for y := 0; y < GRID_SIZE; y++ {
+		for x := 0; x < GRID_SIZE; x++ {
+			s.solution[y][x] = s.board[y][x]
 		}
 	}
 }
@@ -260,13 +288,18 @@ func (s *Sudoku) MoveCursor(dx, dy int) {
 }
 
 func (s *Sudoku) WriteTo(w io.Writer) (int64, error) {
-	hr := func() {
-		fmt.Fprintf(w, "%s\x1B[G\n", strings.Repeat("-", REGION_SIZE*REGIONS_IN_ROW*3+VERT_BORDERS))
+	hr := func(edge bool) {
+		if edge {
+			fmt.Fprintf(w, "+%s+\x1B[G\n", strings.Repeat("-", REGION_SIZE*REGIONS_IN_ROW*3+VERT_BORDERS-2))
+		} else {
+			dashes := strings.Repeat("-", REGION_SIZE*REGIONS_IN_ROW+VERT_BORDERS-4)
+			fmt.Fprintf(w, "+%s+%s+%s+\x1B[G\n", dashes, dashes, dashes)
+		}
 	}
 
 	for y := 0; y < GRID_SIZE; y++ {
 		if y%3 == 0 {
-			hr()
+			hr(y == 0)
 		}
 		fmt.Fprint(w, "|")
 		for x := 0; x < GRID_SIZE; x++ {
@@ -296,7 +329,7 @@ func (s *Sudoku) WriteTo(w io.Writer) (int64, error) {
 		}
 		fmt.Fprint(w, "\x1B[G\n")
 	}
-	hr()
+	hr(true)
 
 	fmt.Printf("\x1B[%dD\x1B[%dA", REGION_SIZE*REGIONS_IN_ROW+VERT_BORDERS, REGION_SIZE*REGIONS_IN_ROW+VERT_BORDERS)
 
@@ -316,13 +349,14 @@ func start() {
 
 	sudoku := NewSudoku()
 	sudoku.Randomize()
-	sudoku.Validate()
-	sudoku.WriteTo(os.Stdout)
 
 	reader := bufio.NewReaderSize(os.Stdin, 1)
 
 	quit := false
 	for !quit {
+		sudoku.Validate()
+		sudoku.WriteTo(os.Stdout)
+
 		input, _, _ := reader.ReadRune()
 		switch input {
 		case 'h':
@@ -333,6 +367,12 @@ func start() {
 			sudoku.MoveCursor(0, -1)
 		case 'l':
 			sudoku.MoveCursor(1, 0)
+		case 'r':
+			sudoku.Randomize()
+		case 's':
+			sudoku.ShowSolution()
+			quit = true
+			reader.ReadByte()
 		case 'q':
 			quit = true
 		case ' ':
@@ -343,8 +383,6 @@ func start() {
 				sudoku.Validate()
 			}
 		}
-
-		sudoku.WriteTo(os.Stdout)
 	}
 }
 
