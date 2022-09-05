@@ -7,7 +7,13 @@ import (
 	"strings"
 )
 
-const GRID_SIZE = 9
+const (
+	REGION_SIZE    = 3
+	REGIONS_IN_ROW = 3
+	GRID_SIZE      = REGION_SIZE * REGIONS_IN_ROW
+	// Arithmetic progression from 1 to 9
+	EXPECTED_SUM = GRID_SIZE * (1 + GRID_SIZE) / 2
+)
 
 type Config struct {
 	OpenCellsPerc int
@@ -48,12 +54,17 @@ func min(a, b int) int {
 // -------------------------
 
 type Sudoku struct {
-	board     [][]int
-	solution  [][]int
-	cursor    point
+	// board is valid combination.
+	board [][]int
+	// solution is user values.
+	solution [][]int
+	// conflicts is invalid user values.
 	conflicts [][]bool
+	cursor    point
 }
 
+// Validate checks if "solution" has valid combinations,
+// otherwise "conflicts" slice will contain invalid cells.
 func (s *Sudoku) Validate() {
 	// Reset conflicts.
 	for y := 0; y < GRID_SIZE; y++ {
@@ -61,6 +72,71 @@ func (s *Sudoku) Validate() {
 			s.conflicts[y][x] = false
 		}
 	}
+
+	for y := 0; y < GRID_SIZE; y++ {
+		for x := 0; x < GRID_SIZE; x++ {
+			if s.solution[y][x] == 0 {
+				continue
+			}
+
+			// rx := int(math.Ceil(float64(x) / 3.0))
+			// ry := int(math.Ceil(float64(y) / 3.0))
+			valid := s.validateRow(y) ||
+				s.validateCol(x) ||
+				s.validateRegion(x/REGION_SIZE, y/REGION_SIZE)
+
+			if !valid {
+				s.conflicts[y][x] = true
+			}
+		}
+	}
+}
+
+func (s *Sudoku) validateCol(x int) bool {
+	sum := 0
+	seen := make(map[int]bool, GRID_SIZE)
+	for i := 0; i < GRID_SIZE; i++ {
+		n := s.solution[i][x]
+		if exists, _ := seen[n]; exists {
+			return false
+		}
+		seen[n] = true
+		sum += n
+	}
+	return sum <= EXPECTED_SUM
+}
+
+func (s *Sudoku) validateRow(y int) bool {
+	sum := 0
+	seen := make(map[int]bool, GRID_SIZE)
+	for i := 0; i < GRID_SIZE; i++ {
+		n := s.solution[y][i]
+		if exists, _ := seen[n]; exists {
+			return false
+		}
+		seen[n] = true
+		sum += n
+	}
+	return sum <= EXPECTED_SUM
+}
+
+// validateRegion takes region coords (e.g. x=0, y=0 is the first region, x=1, y=0 is the second region).
+func (s *Sudoku) validateRegion(x, y int) bool {
+	sum := 0
+	seen := make(map[int]bool, GRID_SIZE)
+	for iy := 0; iy < REGION_SIZE; iy++ {
+		for ix := 0; ix < REGION_SIZE; ix++ {
+			px := x*REGION_SIZE + ix
+			py := y*REGION_SIZE + iy
+			n := s.solution[py][px]
+			if exists, _ := seen[n]; exists {
+				return false
+			}
+			seen[n] = true
+			sum += n
+		}
+	}
+	return sum <= EXPECTED_SUM
 }
 
 func (s *Sudoku) IsValidCell(x, y int) bool {
